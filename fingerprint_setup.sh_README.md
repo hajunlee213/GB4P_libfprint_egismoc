@@ -27,6 +27,7 @@
 | :--- | :--- | :--- |
 | `configs/libfprint/libfprint-2.so.2.0.0` | 저장소 내 Version 2 패치 바이너리 | 패치 빌드된 공유 라이브러리 |
 | `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*` | 시스템 적용 경로 | 패치 라이브러리 및 심볼릭 링크 배포 |
+| `libfprint-2-2` (apt 패키지) | 패키지 버전 고정 | `apt-mark hold`로 업그레이드 차단. `--restore` 시 `unhold` |
 | `configs/pam/fprintd` | 저장소 내 PAM 프로필 템플릿 | `pam_fprintd.so max-tries=3 timeout=30` |
 | `/usr/share/pam-configs/fprintd` | 시스템 PAM 프로필 | `max-tries=3 timeout=30`으로 갱신 |
 | `/etc/pam.d/common-auth` | 공통 PAM 스택 | 3회 시도, 30초 대기 자동 반영 |
@@ -58,6 +59,13 @@
 * **하드웨어**: Egis MoC 센서 (`1c7a:05a1` 등)
 * **권한**: root 권한 (`sudo`)
 
+### 패키지 hold (`libfprint-2-2`)
+* 패치본은 `/usr/local/lib/x86_64-linux-gnu/`에 따로 설치되고, 동적 링커가 `/usr/lib/…`보다 이 경로를 먼저 찾습니다. 그래서 `apt upgrade`가 패치본을 덮어쓰지는 않습니다.
+* hold가 막는 것은 순정 `libfprint-2-2` 패키지의 업그레이드입니다. 업스트림이 ABI를 바꾸면 패치본이 `fprintd`와 어긋날 수 있어서 방지합니다. 대신 이 패키지의 보안 업데이트도 함께 막힙니다.
+* 패치 빌드 기준 버전: `libfprint-2-2 1:1.95.1+tod1-0ubuntu2`
+* 새 버전으로 올리려면: `sudo apt-mark unhold libfprint-2-2 && sudo apt upgrade`, 이후 패치를 새 버전에 맞춰 재빌드하고 `sudo ./fingerprint_setup.sh`로 다시 hold합니다.
+* 확인: `apt-mark showhold`
+
 ---
 
 ## 5. 실행 및 사용 방법
@@ -87,4 +95,5 @@ fprintd-verify
 sudo ./fingerprint_setup.sh --restore
 ```
 * `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*`를 제거하고 `ldconfig`를 수행하여 우분투 기본 패키지(`libfprint-2.so`)로 즉시 복원합니다.
+* `libfprint-2-2` 패키지의 hold를 해제합니다.
 * PAM 설정을 우분투 순정 기본값(`max-tries=1 timeout=10`)으로 되돌립니다.

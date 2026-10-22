@@ -13,6 +13,9 @@ LIB_DIR="/usr/local/lib/x86_64-linux-gnu"
 echo "-> /usr/local/lib 내 커스텀 libfprint 파일 제거..."
 rm -f "${LIB_DIR}/libfprint-2.so"*
 
+echo "-> libfprint-2-2 패키지 hold 해제..."
+apt-mark unhold libfprint-2-2 >/dev/null || true
+
 echo "-> ldconfig 갱신..."
 ldconfig
 

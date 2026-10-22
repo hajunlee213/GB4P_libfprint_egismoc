@@ -40,11 +40,15 @@ ln -sf libfprint-2.so.2 "${LIB_DIR}/libfprint-2.so"
 echo "-> ldconfig 갱신..."
 ldconfig
 
-# 3. 기존 SDCP 세션 캐시 초기화
+# 3. 순정 libfprint 패키지 버전 고정 (apt가 ABI가 바뀐 새 버전을 올려 패치본과 어긋나는 것을 방지)
+echo "-> libfprint-2-2 패키지 hold..."
+apt-mark hold libfprint-2-2 >/dev/null
+
+# 4. 기존 SDCP 세션 캐시 초기화
 echo "-> 이전 SDCP 세션 claim 캐시 정리..."
 rm -f /var/lib/fprint/sdcp-claim-*
 
-# 4. fprintd 서비스 재시작
+# 5. fprintd 서비스 재시작
 echo "-> fprintd 서비스 재시작..."
 systemctl restart fprintd.service || true
 
