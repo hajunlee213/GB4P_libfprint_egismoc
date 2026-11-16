@@ -9,6 +9,7 @@
 ## 출처
 
 - 코드 베이스: [TenSeventy7/libfprint-egismoc-sdcp](https://github.com/TenSeventy7/libfprint-egismoc-sdcp) `master` (`4d128d4`)
+- 수정한 전체 소스: [hajunlee213/libfprint-egismoc-sdcp `gb4p-05a1-sdcp-v2`](https://github.com/hajunlee213/libfprint-egismoc-sdcp/tree/gb4p-05a1-sdcp-v2) (커밋 `b7f55ff`)
 - 설치 스크립트 참고: [antoskuu/libfprint-egismoc-sdcp-fix](https://github.com/antoskuu/libfprint-egismoc-sdcp-fix)
 - 05a1 관찰 결과를 공유한 코멘트: [TenSeventy7/libfprint-egismoc-sdcp PR #17](https://github.com/TenSeventy7/libfprint-egismoc-sdcp/pull/17#issuecomment-6913965276)
 
@@ -32,7 +33,7 @@
 | `libfprint_egismoc_sdcp_reboot_fix.patch` / `.md` | 재부팅 수정 패치와 설명 |
 | `libfprint_egismoc_assert_fix.patch` | `task_ssm` assert 수정 패치 |
 | `usable_SDCP_versions_README.md` | v1 / v2 차이 정리 |
-| `configs/libfprint/libfprint-2.so.2.0.0` | v2 빌드 바이너리 |
+| `configs/libfprint/libfprint-2.so.2.0.0` | v2 빌드 바이너리. 소스: fork 브랜치 `gb4p-05a1-sdcp-v2` (`b7f55ff`) |
 | `configs/pam/fprintd` | PAM 프로필 (`max-tries=3 timeout=30`) |
 | `fingerprint_setup.sh` (+ `_README.md`) | 패치 라이브러리 + PAM 설치 / `--restore`로 순정 복원 |
 | `pam_fprint_tuning.sh` (+ `_README.md`) | PAM 옵션만 적용 |
@@ -54,6 +55,12 @@ sudo ./fingerprint_setup.sh
 sudo ./fingerprint_setup.sh --restore
 ```
 
+`--restore`는 `/usr/local/lib`의 사본만 지웁니다. 예전에 소스 트리에서 `meson install`로 `/usr/lib`의 패키지 파일을 덮어썼다면, 패키지를 다시 설치해야 순정으로 돌아갑니다:
+
+```bash
+sudo apt install --reinstall libfprint-2-2
+```
+
 ## 소스에서 다시 빌드
 
 `src/libfprint-egismoc-sdcp`는 폴더를 옮겼기 때문에 기존 `builddir`의 절대 경로가 맞지 않습니다. 새로 설정하세요:
@@ -73,3 +80,12 @@ git clone https://github.com/TenSeventy7/libfprint-egismoc-sdcp.git
 cd libfprint-egismoc-sdcp && git checkout 4d128d4
 git am /path/to/gb4p-05a1-sdcp-v2.patch
 ```
+
+## 라이선스
+
+이 레포 전체(패치, 빌드 바이너리, 스크립트, 문서)는 **GNU LGPL v2.1 이상**(`LGPL-2.1-or-later`)으로 배포합니다. 전문은 [`COPYING`](COPYING)에 있습니다.
+
+- 패치와 `configs/libfprint/libfprint-2.so.2.0.0`은 libfprint(LGPL-2.1-or-later, 원 저작권자들에게 저작권 있음)의 수정본입니다.
+- 바이너리에 대응하는 전체 소스: <https://github.com/hajunlee213/libfprint-egismoc-sdcp/tree/gb4p-05a1-sdcp-v2> (`b7f55ff`, upstream `4d128d4` 위의 커밋 하나).
+- 변경 내용과 날짜는 위 "패치 요약"과 git 기록에 있습니다.
+- antoskuu/libfprint-egismoc-sdcp-fix의 코드는 포함하지 않습니다 (참고 링크만).
