@@ -1,0 +1,6 @@
+# Local source trees (each is its own git clone; the fix is kept as gb4p-05a1-sdcp-v2.patch)
+/src/
+
+# Binaries in the archived agy workdir (the v2 build is tracked once, in configs/libfprint/)
+/archive/agy-workdir/*.backup
+/archive/agy-workdir/usable_SDCP_version2/*.so*
