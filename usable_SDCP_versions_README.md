@@ -1,30 +1,30 @@
-# Usable SDCP Versions 요약
+# Usable SDCP Versions Summary
 
-이 문서는 Samsung Galaxy Book 4 Pro/Ultra (Egis 1c7a:05a1) 지문인식 드라이버의 실사용 가능했던(Usable) 주요 패치 버전들의 특징과 차이점을 기록합니다.
+This document records the features and differences of the main patch versions of the fingerprint driver for the Samsung Galaxy Book 4 Pro/Ultra (Egis 1c7a:05a1) that were usable in daily life.
 
 ## Version 1 (2026-09-20)
-- **위치**: `usable_SDCP_version1.patch` (프로젝트 루트)
-- **배경**: 원본 드라이버에서 최초로 지문 등록(Enroll), 인증(Verify), PAM 연동 및 재부팅(Warm/Cold) 후 지문 보존에 성공한 최초의 실사용 가능(Usable) 베이스라인 패치.
-- **주요 변경 사항 요약**:
-  1. **호스트 키(Host Key) 영구 보존 패치 (`fpi-sdcp-device.c`)**
-     - **문제**: 원본 SDCP 드라이버는 재부팅 시 리눅스 커널의 `boot_id` 변경을 감지하면 기존 캐시를 파기하고 새 Host Key를 생성했습니다. 그러나 센서(Egis 05a1)는 지문 템플릿을 Host Key에 암호학적으로 묶어두기 때문에, 키가 바뀌면 센서가 주인이 바뀐 것으로 판단하여 기존 지문 접근을 거부하고 "등록된 지문 0개"로 응답(이후 fprintd가 로컬 지문까지 자동 삭제)했습니다.
-     - **해결**: `boot_id` 불일치 시 캐시를 삭제하고 새 키를 생성하는 로직(`delete_cached_claim`, `goto generate_new`)을 제거하여 호스트의 암호화 신분증(Host Key)을 영구 보존했습니다.
-  2. **재부팅 감지 시 세션 재수립 분기 (`fpi-sdcp-device.c`)**
-     - **문제**: 센서 칩셋 자체는 전원이 꺼지면 내부 세션을 잃어버리므로, 재부팅 후에는 반드시 새로운 보안 통신(`SDCP Connect`)을 맺어야 했습니다.
-     - **해결**: `cached_boot_id`와 현재 `boot_id`가 다를 경우 `priv->is_connected = FALSE`로 설정하여, 보존된 Host Key를 들고 센서와 새로운 세션을 맺도록 유도했습니다. (동일 부팅 세션 내에서는 `TRUE`로 유지하여 기존 세션 재사용)
-  3. **세션 만료 무제한 설정 (`egismoc.c`)**
-     - **문제**: 하드코딩된 24시간(86400초) 만료 타이머로 인해 하루가 지나면 세션 키가 파기되는 문제가 있었습니다.
-     - **해결**: `claim_expiration_seconds = -1`로 변경하여 만료 타이머를 비활성화했습니다.
-- **한계점 (Version 2 개발 계기)**:
-  - 동일 부팅 세션 내에서 `is_connected = TRUE`로 세션을 재사용하려 했으나, 절전/화면 잠금/USB 리셋 시 센서가 자체적으로 세션을 잊어버려 인증 불일치(`65 E0`)가 발생하는 문제가 남아있었습니다.
-  - 지문 인증 취소 시 `task_ssm` 미해제로 인한 `fprintd` 크래시 문제가 존재했습니다.
+- **Location**: `archive/agy-workdir/usable_SDCP_version1.patch`
+- **Background**: The first usable baseline patch. On top of the original driver, it was the first to get fingerprint enrollment (Enroll), authentication (Verify), PAM integration, and fingerprint retention across reboots (warm/cold) working.
+- **Summary of main changes**:
+  1. **Keep the host key permanently (`fpi-sdcp-device.c`)**
+     - **Problem**: When the original SDCP driver saw the Linux kernel `boot_id` change at reboot, it discarded the existing cache and generated a new host key. But the sensor (Egis 05a1) cryptographically binds fingerprint templates to the host key, so with a new key it treated the host as a new owner, refused access to the existing fingerprints, and answered "0 enrolled fingerprints" (after which fprintd even deleted the local fingerprints automatically).
+     - **Fix**: Removed the logic that deletes the cache and generates a new key on a `boot_id` mismatch (`delete_cached_claim`, `goto generate_new`), so the host's cryptographic identity (host key) is preserved.
+  2. **Re-establish the session when a reboot is detected (`fpi-sdcp-device.c`)**
+     - **Problem**: The sensor chipset itself loses its internal session when power is cut, so after a reboot a new secure channel (`SDCP Connect`) had to be established.
+     - **Fix**: When `cached_boot_id` differs from the current `boot_id`, set `priv->is_connected = FALSE` so the driver opens a new session with the sensor using the preserved host key. (Within the same boot it stays `TRUE` and reuses the existing session.)
+  3. **No session expiry (`egismoc.c`)**
+     - **Problem**: A hard-coded 24-hour (86400 s) expiry timer discarded the session key after a day.
+     - **Fix**: Changed to `claim_expiration_seconds = -1`, which disables the expiry timer.
+- **Limits (what led to Version 2)**:
+  - Within the same boot it reused the session with `is_connected = TRUE`, but after suspend, screen lock, or a USB reset the sensor forgot the session on its own, which still caused authentication mismatches (`65 E0`).
+  - Cancelling a fingerprint authentication left `task_ssm` unreleased and crashed `fprintd`.
 
 ## Version 2 (2026-09-28)
-- **위치**: `usable_SDCP_version2/` 폴더 내 (컴파일된 `libfprint-2.so.2.0.0` 및 `.patch` 파일 포함)
-- **주요 변경 사항 요약**:
-  1. **fprintd Crash(뻗음) 방지 패치 (`task_ssm` 누수 해결)**
-     - **문제**: 지문 인식(Identify) 도중 취소하거나 화면이 꺼질 때, 기존 드라이버는 내부 상태 머신(`task_ssm`)을 제대로 비워주지 않아 다음번 사용 시 무조건 `fprintd`가 Crash 되는 고질적인 버그가 있었습니다.
-     - **해결**: `egismoc_close` 함수에서 `task_ssm`이 남아있을 경우 강제로 메모리를 해제(`fpi_ssm_free`)하고 `NULL`로 초기화하여 데몬이 뻗는 현상을 완벽히 차단했습니다.
-  2. **강제 SDCP 재연결 패치 (센서 기억상실/타임아웃 대응)**
-     - **문제**: Version 1에서는 "재부팅을 안 했으면 기존 세션을 재사용한다"는 로직을 썼습니다. 그러나 화면을 잠그거나 유휴 상태일 때 발생하는 USB 리셋(초기화)이나 하드웨어 절전(Timeout)으로 인해 센서가 스스로 세션 키를 지워버리는 문제가 있었습니다. 이로 인해 데몬은 세션이 살아있다고 착각하여 `65 E0` 에러가 발생했습니다.
-     - **해결**: 캐시를 불러올 때 무조건 `priv->is_connected = FALSE`로 설정하도록 수정했습니다. 이로써 `fprintd`가 깨어날 때마다(화면을 켤 때마다) 기존 호스트 키를 유지한 채 **항상 새로운 보안 세션(`SDCP Connect`)을 맺게 되어** 센서와 세션이 엇갈리는 문제를 완벽하게 해결했습니다.
+- **Location**: `gb4p-05a1-sdcp-v2.patch` (patch) and `configs/libfprint/libfprint-2.so.2.0.0` (compiled binary)
+- **Summary of main changes**:
+  1. **Prevent fprintd crashes (fix the `task_ssm` leak)**
+     - **Problem**: If an identification (Identify) was cancelled or the screen turned off mid-way, the old driver did not clean up its internal state machine (`task_ssm`), and `fprintd` crashed on the next use. This was a long-standing bug.
+     - **Fix**: In `egismoc_close`, if `task_ssm` is left over, it is freed forcibly (`fpi_ssm_free`) and reset to `NULL`, which stops the daemon from crashing.
+  2. **Forced SDCP reconnect (handles sensor amnesia / timeouts)**
+     - **Problem**: Version 1 reused the existing session if there had been no reboot. But a USB reset (re-initialization) or hardware power saving (timeout) while the screen was locked or the machine was idle made the sensor erase its session key on its own. The daemon still believed the session was alive, which produced the `65 E0` error.
+     - **Fix**: When loading the cache, `priv->is_connected = FALSE` is now always set. Every time `fprintd` wakes up (each time the screen is turned on), it keeps the existing host key but **always opens a new secure session (`SDCP Connect`)**, which fixes the session mismatch with the sensor.

@@ -1,99 +1,99 @@
-# 지문인식 센서 드라이버 & PAM 원클릭 복원 (`fingerprint_setup.sh`)
+# Fingerprint Sensor Driver & PAM One-Click Restore (`fingerprint_setup.sh`)
 
-삼성 갤럭시 북4 프로(Galaxy Book 4 Pro, NT960XGK / Egis `1c7a:05a1`)의 지문인식 센서에서 발생하는 재부팅 시 지문 유실, 화면 잠금/절전 복귀 시 센서 먹통(`65 E0`), `fprintd` 데몬 크래시 문제를 해결한 **SDCP Version 2 드라이버**와 **PAM 최적화(3회/30초)**를 원클릭으로 복원하는 스크립트입니다.
-
----
-
-## 1. 배경 및 목적
-
-갤럭시 북4 프로에 내장된 이지스테크(EgisTec) MoC 지문 센서(`1c7a:05a1`)는 SDCP(Secure Device Connection Protocol)를 통해 호스트와 암호화 통신을 수행합니다. 그러나 순정 우분투 및 기본 오픈소스 드라이버에서는 다음과 같은 심각한 문제들이 존재합니다:
-
-1. **재부팅 시 등록 지문 유실 (Host Key 파기 버그)**:
-   - 드라이버가 커널의 `boot_id` 변경을 감지하면 기존 Host Key 캐시를 삭제하고 새 키를 생성함.
-   - 센서는 지문 템플릿을 Host Key에 암호학적으로 묶어두므로, 키가 바뀌면 센서가 주인이 바뀐 것으로 판단하여 기존 지문 접근을 거부함.
-2. **화면 잠금 / 절전 복귀 시 센서 먹통 (`65 E0` 에러)**:
-   - 화면이 꺼지거나 USB 절전 모드로 진입 시 센서 하드웨어가 자체 세션을 잃어버림.
-   - 드라이버는 이전 세션이 유지된 것으로 착각하여 기존 세션으로 통신을 시도하다 불일치 에러 발생.
-3. **취소 시 `fprintd` 데몬 크래시 (자원 누수)**:
-   - 지문 인증 도중 화면이 꺼지거나 취소될 때 상태 머신(`task_ssm`)이 정리되지 않아 다음번 지문 요청 시 데몬이 즉시 비정상 종료됨.
-4. **우분투 PAM의 가혹한 기본 제한**:
-   - 우분투 기본 패키지는 터미널 대기를 줄이기 위해 1회 실패 시 즉시 비밀번호로 넘어가고 10초 만에 타임아웃됨.
+This script restores, in one step, the **SDCP Version 2 driver** and the **PAM tuning (3 tries / 30 s)** that fix the following problems on the fingerprint sensor of the Samsung Galaxy Book 4 Pro (NT960XGK / Egis `1c7a:05a1`): enrolled fingerprints lost on reboot, the sensor dying after screen lock or suspend resume (`65 E0`), and `fprintd` daemon crashes.
 
 ---
 
-## 2. 수정 및 생성되는 시스템 경로
+## 1. Background and purpose
 
-| 경로 | 역할 | 변경 내용 |
+The EgisTec MoC fingerprint sensor (`1c7a:05a1`) in the Galaxy Book 4 Pro talks to the host over an encrypted channel using SDCP (Secure Device Connection Protocol). Stock Ubuntu and the default open-source driver have several serious problems with it:
+
+1. **Enrolled fingerprints lost on reboot (host key discard bug)**:
+   - When the driver sees the kernel `boot_id` change, it deletes the cached host key and generates a new one.
+   - The sensor cryptographically binds fingerprint templates to the host key, so when the key changes it treats the host as a new owner and refuses access to the existing fingerprints.
+2. **Sensor dead after screen lock / suspend resume (`65 E0` error)**:
+   - When the screen turns off or USB enters power saving, the sensor hardware loses its own session.
+   - The driver assumes the previous session is still alive, tries to talk over it, and hits a mismatch error.
+3. **`fprintd` daemon crash after cancellation (resource leak)**:
+   - If the screen turns off or the attempt is cancelled mid-authentication, the state machine (`task_ssm`) is not cleaned up, and the daemon exits abnormally on the next fingerprint request.
+4. **Harsh default PAM limits on Ubuntu**:
+   - The stock Ubuntu package, to cut waiting in terminals, falls back to the password after a single failed attempt and times out after 10 seconds.
+
+---
+
+## 2. System paths modified or created
+
+| Path | Role | Change |
 | :--- | :--- | :--- |
-| `configs/libfprint/libfprint-2.so.2.0.0` | 저장소 내 Version 2 패치 바이너리 | 패치 빌드된 공유 라이브러리 |
-| `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*` | 시스템 적용 경로 | 패치 라이브러리 및 심볼릭 링크 배포 |
-| `libfprint-2-2` (apt 패키지) | 패키지 버전 고정 | `apt-mark hold`로 업그레이드 차단. `--restore` 시 `unhold` |
-| `configs/pam/fprintd` | 저장소 내 PAM 프로필 템플릿 | `pam_fprintd.so max-tries=3 timeout=30` |
-| `/usr/share/pam-configs/fprintd` | 시스템 PAM 프로필 | `max-tries=3 timeout=30`으로 갱신 |
-| `/etc/pam.d/common-auth` | 공통 PAM 스택 | 3회 시도, 30초 대기 자동 반영 |
-| `/var/lib/fprint/sdcp-claim-*` | 세션 키 캐시 | 재부팅/초기화 시 이전 휘발성 세션 정리 |
+| `configs/libfprint/libfprint-2.so.2.0.0` | Version 2 patched binary in this repo | Patched shared library build |
+| `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*` | Install location on the system | Patched library and symlinks are deployed here |
+| `libfprint-2-2` (apt package) | Package version pin | `apt-mark hold` blocks upgrades; `--restore` runs `unhold` |
+| `configs/pam/fprintd` | PAM profile template in this repo | `pam_fprintd.so max-tries=3 timeout=30` |
+| `/usr/share/pam-configs/fprintd` | System PAM profile | Updated to `max-tries=3 timeout=30` |
+| `/etc/pam.d/common-auth` | Common PAM stack | 3 tries and 30 s wait applied automatically |
+| `/var/lib/fprint/sdcp-claim-*` | Session key cache | Cleared on reboot/reset to drop the old volatile session |
 
 ---
 
-## 3. 주요 파라미터 및 원리 (Version 1 vs Version 2)
+## 3. Key parameters and how they work (Version 1 vs Version 2)
 
-### Version 1 (재부팅 베이스라인)
-* **호스트 키 영구 보존**: `boot_id` 불일치 시 캐시 키를 지우는 로직 제거.
-* **만료 시간 무제한**: `claim_expiration_seconds = -1` (24시간 자동 만료 차단).
-* *한계*: 절전 복귀 시 세션 재사용 시도로 인한 `65 E0` 에러 및 인증 취소 시 데몬 크래시 상존.
+### Version 1 (reboot baseline)
+* **Keep the host key permanently**: removed the logic that deletes the cached key on a `boot_id` mismatch.
+* **No expiry**: `claim_expiration_seconds = -1` (prevents the 24-hour automatic expiry).
+* *Limits*: it still tried to reuse the session after resume, so `65 E0` errors remained, and cancelling an authentication could still crash the daemon.
 
-### Version 2 (현재 실사용 최신 버전 - Full Fix)
-* **`task_ssm` 누수 해제 (`egismoc.c`)**:
-  * `egismoc_close` 시 잔여 상태 머신이 있을 경우 `fpi_ssm_free` 및 `NULL` 초기화를 강제하여 데몬 크래시 완벽 차단.
-* **강제 SDCP 재연결 (`fpi-sdcp-device.c`)**:
-  * 캐시 로드 시 무조건 `priv->is_connected = FALSE`로 설정.
-  * `fprintd`가 깨어날 때마다(화면 잠금 해제, 절전 복귀 시) 영구 보존된 Host Key를 유지한 채 **항상 새로운 보안 세션(`SDCP Connect`)을 협상**하여 센서 기억상실 문제 완벽 해결.
-* **PAM 3회 시도 / 30초 타임아웃 연동**:
-  * 살짝 빗맞거나 각도가 안 맞아도 3회까지 여유롭게 재시도 가능.
-
----
-
-## 4. 사전 요구사항 및 의존성
-
-* **패키지**: `fprintd`, `libpam-fprintd` (스크립트 실행 시 자동 설치됨)
-* **하드웨어**: Egis MoC 센서 (`1c7a:05a1` 등)
-* **권한**: root 권한 (`sudo`)
-
-### 패키지 hold (`libfprint-2-2`)
-* 패치본은 `/usr/local/lib/x86_64-linux-gnu/`에 따로 설치되고, 동적 링커가 `/usr/lib/…`보다 이 경로를 먼저 찾습니다. 그래서 `apt upgrade`가 패치본을 덮어쓰지는 않습니다.
-* hold가 막는 것은 순정 `libfprint-2-2` 패키지의 업그레이드입니다. 업스트림이 ABI를 바꾸면 패치본이 `fprintd`와 어긋날 수 있어서 방지합니다. 대신 이 패키지의 보안 업데이트도 함께 막힙니다.
-* 패치 빌드 기준 버전: `libfprint-2-2 1:1.95.1+tod1-0ubuntu2`
-* 새 버전으로 올리려면: `sudo apt-mark unhold libfprint-2-2 && sudo apt upgrade`, 이후 패치를 새 버전에 맞춰 재빌드하고 `sudo ./fingerprint_setup.sh`로 다시 hold합니다.
-* 확인: `apt-mark showhold`
+### Version 2 (current, in daily use: full fix)
+* **`task_ssm` leak fix (`egismoc.c`)**:
+  * `egismoc_close` now forces `fpi_ssm_free` and resets the pointer to `NULL` if a state machine is left over, which stops the daemon crash.
+* **Forced SDCP reconnect (`fpi-sdcp-device.c`)**:
+  * Always sets `priv->is_connected = FALSE` when loading the cache.
+  * Every time `fprintd` wakes up (screen unlock, resume from suspend), it keeps the preserved host key but **always negotiates a new secure session (`SDCP Connect`)**, which resolves the sensor "amnesia" problem.
+* **PAM 3 tries / 30 s timeout**:
+  * A slightly off touch or a bad finger angle can be retried up to three times.
 
 ---
 
-## 5. 실행 및 사용 방법
+## 4. Requirements and dependencies
 
-### 원클릭 복원
+* **Packages**: `fprintd`, `libpam-fprintd` (installed automatically when the script runs)
+* **Hardware**: Egis MoC sensor (`1c7a:05a1`, etc.)
+* **Privileges**: root (`sudo`)
+
+### Package hold (`libfprint-2-2`)
+* The patched library is installed separately in `/usr/local/lib/x86_64-linux-gnu/`, and the dynamic linker searches this path before `/usr/lib/…`. So `apt upgrade` does not overwrite the patched library.
+* The hold blocks upgrades of the stock `libfprint-2-2` package. If upstream changes the ABI, the patched library could stop matching `fprintd`, and the hold prevents that. The side effect is that security updates for this package are blocked too.
+* Version the patched build is based on: `libfprint-2-2 1:1.95.1+tod1-0ubuntu2`
+* To move to a newer version: `sudo apt-mark unhold libfprint-2-2 && sudo apt upgrade`, then rebuild the patch against the new version and run `sudo ./fingerprint_setup.sh` to hold again.
+* Check: `apt-mark showhold`
+
+---
+
+## 5. Running and using it
+
+### One-click restore
 ```bash
 sudo ./fingerprint_setup.sh
 ```
 
-### 지문 등록 및 테스트
+### Enroll and test a fingerprint
 ```bash
-# 새 지문 등록 (지시에 따라 손가락 반복 태그)
+# Enroll a new fingerprint (touch the sensor repeatedly as prompted)
 fprintd-enroll
 
-# 등록된 지문 확인
+# List enrolled fingerprints
 fprintd-list $USER
 
-# 지문 인증 테스트
+# Test fingerprint authentication
 fprintd-verify
 ```
 
 ---
 
-## 6. 순정 롤백 (원상 복구) 방법
+## 6. Rolling back to stock
 
 ```bash
 sudo ./fingerprint_setup.sh --restore
 ```
-* `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*`를 제거하고 `ldconfig`를 수행하여 우분투 기본 패키지(`libfprint-2.so`)로 즉시 복원합니다.
-* `libfprint-2-2` 패키지의 hold를 해제합니다.
-* PAM 설정을 우분투 순정 기본값(`max-tries=1 timeout=10`)으로 되돌립니다.
+* Removes `/usr/local/lib/x86_64-linux-gnu/libfprint-2.so*` and runs `ldconfig`, immediately falling back to the Ubuntu package's `libfprint-2.so`.
+* Releases the hold on the `libfprint-2-2` package.
+* Resets PAM to the stock Ubuntu defaults (`max-tries=1 timeout=10`).
