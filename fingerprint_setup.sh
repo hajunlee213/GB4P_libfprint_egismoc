@@ -4,49 +4,49 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "========================================================="
-echo " Galaxy Book 4 Pro (GB4P) 지문인식 드라이버 & PAM 원클릭 복원"
-echo " (Egis 1c7a:05a1 SDCP v2 + PAM 3회/30초 최적화)"
+echo " Galaxy Book 4 Pro (GB4P) fingerprint driver & PAM one-click restore"
+echo " (Egis 1c7a:05a1 SDCP v2 + PAM 3 tries / 30 s tuning)"
 echo "========================================================="
 
-# root 권한 확인 및 자동 승격
+# Check for root and escalate automatically
 if [ "$EUID" -ne 0 ]; then
-    echo "[!] 관리자 권한이 필요합니다. sudo 로 재실행합니다..."
+    echo "[!] Root privileges required. Re-running with sudo..."
     exec sudo bash "$0" "$@"
 fi
 
-# 롤백 옵션 처리
+# Handle the rollback option
 if [ "${1:-}" = "--restore" ] || [ "${1:-}" = "--uninstall" ]; then
     bash "${SCRIPT_DIR}/scripts/restore-libfprint.sh"
-    # PAM 순정 복구 (1회/10초)
+    # Restore stock PAM (1 try / 10 s)
     sed -i 's/pam_fprintd\.so.*/pam_fprintd.so max-tries=1 timeout=10 # debug/' /usr/share/pam-configs/fprintd || true
     pam-auth-update --package || true
-    echo "[SUCCESS] 지문인식 드라이버 및 PAM 설정이 순정 상태로 롤백되었습니다."
+    echo "[SUCCESS] Fingerprint driver and PAM settings rolled back to stock."
     exit 0
 fi
 
-# 1. libfprint SDCP Version 2 패치 드라이버 복원
+# 1. Restore the libfprint SDCP Version 2 patched driver
 bash "${SCRIPT_DIR}/scripts/setup-libfprint.sh"
 echo ""
 
-# 2. PAM 지문인식 옵션(3회 시도, 30초 대기) 복원
+# 2. Restore the PAM fingerprint options (3 tries, 30 s wait)
 bash "${SCRIPT_DIR}/scripts/setup-pam-fprint.sh"
 echo ""
 
 echo "========================================================="
-echo " [SUCCESS] 지문인식 센서 및 PAM 설정 복원이 완료되었습니다!"
+echo " [SUCCESS] Fingerprint sensor and PAM settings restored!"
 echo "========================================================="
-echo " 1. Egis SDCP 패치 드라이버(v2):"
-echo "    - 호스트 키 영구 보존: 재부팅 후에도 등록된 지문 100% 보존"
-echo "    - fprintd Crash 방지: task_ssm 메모리 누수 해결로 데몬 비정상 종료 차단"
-echo "    - 강제 SDCP 재연결: 절전/화면 잠금 복귀 시 센서 기억상실(65 E0) 완벽 해결"
-echo "    - 세션 만료 무제한: 24시간 후 세션 파기 방지"
-echo " 2. PAM 인증 최적화:"
-echo "    - 최대 시도 횟수: 3회 (우분투 기본 1회 -> 3회 확장)"
-echo "    - 타임아웃: 30초 (우분투 기본 10초 -> 30초 확장)"
+echo " 1. Egis SDCP patched driver (v2):"
+echo "    - Host key kept permanently: enrolled fingerprints survive reboots"
+echo "    - fprintd crash fix: task_ssm leak resolved, no more abnormal daemon exits"
+echo "    - Forced SDCP reconnect: fixes sensor amnesia (65 E0) after suspend/screen lock"
+echo "    - No session expiry: session no longer discarded after 24 hours"
+echo " 2. PAM tuning:"
+echo "    - Max tries: 3 (Ubuntu default 1 -> 3)"
+echo "    - Timeout: 30 s (Ubuntu default 10 s -> 30 s)"
 echo "========================================================="
-echo " 🚀 사용 방법:"
-echo " - 신규 지문 등록: fprintd-enroll"
-echo " - 등록된 지문 확인: fprintd-list \$USER"
-echo " - 지문 인증 테스트: fprintd-verify"
-echo " - 순정 롤백: sudo ./fingerprint_setup.sh --restore"
+echo " 🚀 Usage:"
+echo " - Enroll a new fingerprint: fprintd-enroll"
+echo " - List enrolled fingerprints: fprintd-list \$USER"
+echo " - Test fingerprint authentication: fprintd-verify"
+echo " - Roll back to stock: sudo ./fingerprint_setup.sh --restore"
 echo "========================================================="
